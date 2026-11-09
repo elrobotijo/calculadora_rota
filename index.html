@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Calculadora Rota</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Deshabilitar selección de texto y zoom de doble toque en móviles/tablets para que se sienta como una app nativa */
+        body {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            background-color: #111827; /* Tailwind gray-900 */
+            color: #f3f4f6; /* Tailwind gray-100 */
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        .btn-calc {
+            transition: all 0.1s ease-in-out;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+        }
+        
+        .btn-calc:active:not(:disabled) {
+            transform: scale(0.95);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        .btn-broken {
+            position: relative;
+            opacity: 0.4;
+            cursor: not-allowed;
+            background-color: #374151 !important; /* gray-700 */
+            color: #9ca3af !important; /* gray-400 */
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.6) !important;
+        }
+
+        .btn-broken::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            width: 80%;
+            height: 2px;
+            background-color: #ef4444; /* red-500 */
+            transform: translateY(-50%) rotate(-45deg);
+            z-index: 10;
+        }
+        
+        .btn-broken::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            width: 80%;
+            height: 2px;
+            background-color: #ef4444; /* red-500 */
+            transform: translateY(-50%) rotate(45deg);
+            z-index: 10;
+        }
+
+        /* Pantalla estilo LCD retro */
+        .calc-screen {
+            background-color: #d1fae5; /* emerald-100 */
+            color: #064e3b; /* emerald-900 */
+            box-shadow: inset 0 4px 6px rgba(0,0,0,0.3);
+            font-family: monospace;
+        }
+
+        /* Modal simple de éxito */
+        #success-modal {
+            backdrop-filter: blur(4px);
+        }
+
+        /* Layout dinámico (inyectado por JS) */
+        .layout-pc {
+            max-width: 900px !important;
+            flex-direction: row !important;
+        }
+        .layout-tablet {
+            max-width: 576px !important; /* Tailwind max-w-xl */
+            flex-direction: column !important;
+        }
+        .seccion-mitad {
+            flex: 1 1 50%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Ocultar barra de scroll para el contenedor de fórmulas */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="h-[100dvh] w-screen flex flex-col items-center justify-center bg-gray-900 p-2 sm:p-4 overflow-hidden">
+
+    <!-- 1. PANTALLA DE BIENVENIDA -->
+    <div id="pantalla-bienvenida" class="w-full max-w-md bg-gray-800 rounded-3xl shadow-2xl p-6 sm:p-8 border border-gray-700 flex flex-col transition-all">
+        <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-white text-center mb-2">Calculadora Rota</h1>
+        <p class="text-gray-400 text-center mb-8 text-sm">Encuentra los números del 1 al 20 usando solo las teclas que funcionan.</p>
+        
+        <div class="mb-6">
+            <label class="block text-gray-300 text-sm font-bold mb-2" for="jugador-nombre">Tu Nombre</label>
+            <input type="text" id="jugador-nombre" class="w-full bg-gray-900 text-white rounded-xl px-4 py-3 border border-gray-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors" placeholder="Ej: María">
+        </div>
+
+        <div class="mb-5">
+            <label class="block text-gray-300 text-sm font-bold mb-2">Dispositivo / Visualización</label>
+            <div class="grid grid-cols-2 gap-3">
+                <button id="btn-layout-tablet" onclick="seleccionarLayout('tablet')" class="bg-indigo-600 text-white border-2 border-indigo-400 rounded-xl py-3 flex flex-col items-center justify-center gap-1 transition-all shadow-lg">
+                    <span class="text-xl">📱</span>
+                    <span class="text-xs font-semibold">Tableta (Vertical)</span>
+                </button>
+                <button id="btn-layout-pc" onclick="seleccionarLayout('pc')" class="bg-gray-700 text-gray-300 border-2 border-transparent rounded-xl py-3 flex flex-col items-center justify-center gap-1 transition-all hover:bg-gray-600">
+                    <span class="text-xl">💻</span>
+                    <span class="text-xs font-semibold">PC (Horizontal)</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="mb-8">
+            <label class="block text-gray-300 text-sm font-bold mb-2">Modo de Juego</label>
+            <div class="grid grid-cols-2 gap-3">
+                <button id="btn-modo-todos" onclick="seleccionarModo('todos')" class="bg-emerald-600 text-white border-2 border-emerald-400 rounded-xl py-3 flex flex-col items-center justify-center gap-1 transition-all shadow-lg">
+                    <span class="text-xl">🔢</span>
+                    <span class="text-xs font-semibold">Completar 1 al 20</span>
+                </button>
+                <button id="btn-modo-random" onclick="seleccionarModo('random')" class="bg-gray-700 text-gray-300 border-2 border-transparent rounded-xl py-3 flex flex-col items-center justify-center gap-1 transition-all hover:bg-gray-600">
+                    <span class="text-xl">🎲</span>
+                    <span class="text-xs font-semibold">10 Aleatorios</span>
+                </button>
+            </div>
+        </div>
+
+        <button onclick="irANiveles()" class="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3 px-4 rounded-xl text-lg shadow-lg transition-transform active:scale-95">
+            Comenzar
+        </button>
+    </div>
+
+    <!-- 2. PANTALLA DE SELECCIÓN DE NIVELES -->
+    <div id="pantalla-niveles" class="hidden w-full max-w-md bg-gray-800 rounded-3xl shadow-2xl p-6 sm:p-8 border border-gray-700 flex flex-col">
+        <h2 class="text-2xl font-bold text-white mb-1">¡Hola, <span id="nombre-display" class="text-indigo-400">Jugador</span>!</h2>
+        <p class="text-gray-400 mb-6 text-sm">Selecciona un nivel para empezar el reto.</p>
+        
+        <div class="grid grid-cols-1 gap-3 flex-grow overflow-y-auto pr-1" id="grid-niveles">
+            <!-- Los botones se generan por JavaScript -->
+        </div>
+        
+        <button onclick="irABienvenida()" class="mt-6 text-gray-400 hover:text-white transition-colors text-sm font-medium">
+            ← Volver a ajustes
+        </button>
+    </div>
+
+    <!-- 3. PANTALLA DE JUEGO (CALCULADORA) -->
+    <div id="pantalla-juego" class="hidden w-full bg-gray-800 rounded-3xl shadow-2xl p-3 sm:p-5 border border-gray-700 flex flex-col h-full transition-all duration-300 layout-tablet">
+        
+        <!-- Contenedor que cambia entre col (tablet) y row (pc) -->
+        <div id="juego-layout-interno" class="flex flex-col gap-4 sm:gap-5 h-full w-full">
+            
+            <!-- Mitad 1: Calculadora -->
+            <div class="seccion-mitad flex flex-col">
+                <!-- Header del juego -->
+                <div class="flex justify-between items-center text-white mb-3">
+                    <div class="flex-grow pr-2 flex items-center gap-2">
+                        <button onclick="volverANivelesDesdeJuego()" class="bg-gray-700 hover:bg-gray-600 text-white rounded-lg p-1.5 shrink-0 transition-colors" title="Volver a niveles">
+                            <span class="text-sm">🔙</span>
+                        </button>
+                        <button onclick="abandonarJuego()" class="bg-red-900/80 hover:bg-red-700 text-white rounded-lg p-1.5 shrink-0 transition-colors" title="Abandonar y volver al inicio">
+                            <span class="text-sm">🏠</span>
+                        </button>
+                        <div>
+                            <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white leading-none">Calculadora Rota</h1>
+                            <p class="text-[10px] sm:text-xs text-gray-400 mt-1">Halla del 1 al 20.</p>
+                        </div>
+                    </div>
+                    <span class="bg-indigo-600 px-2 sm:px-3 py-1 rounded-xl text-xs sm:text-sm font-bold shadow-lg whitespace-nowrap" id="nivel-texto">Nivel 1</span>
+                </div>
+
+                <!-- Pantalla LCD -->
+                <div class="calc-screen rounded-xl p-3 sm:p-4 flex flex-col justify-between h-24 sm:h-28 relative overflow-hidden mb-4 shrink-0">
+                    <div class="text-right text-lg sm:text-xl text-emerald-800/70 h-8 overflow-hidden font-medium" id="expresion-display"></div>
+                    <div class="text-right text-4xl sm:text-5xl font-bold truncate transition-colors duration-200" id="resultado-display">0</div>
+                </div>
+
+                <!-- Teclado -->
+                <div class="grid grid-cols-4 gap-2 sm:gap-3 shrink-0" id="teclado">
+                    <button class="btn-calc bg-red-600 hover:bg-red-500 text-white font-bold text-lg sm:text-xl rounded-xl py-3 col-span-2" onclick="inputKey('C')">C</button>
+                    <button class="btn-calc bg-gray-600 hover:bg-gray-500 text-white font-bold text-lg sm:text-xl rounded-xl py-3" onclick="inputKey('DEL')">⌫</button>
+                    <button class="btn-calc bg-orange-500 hover:bg-orange-400 text-white font-bold text-lg sm:text-xl rounded-xl py-3" onclick="inputKey('/')">÷</button>
+                    
+                    <button class="btn-calc bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('7')">7</button>
+                    <button class="btn-calc bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('8')">8</button>
+                    <button class="btn-calc bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('9')">9</button>
+                    <button class="btn-calc bg-orange-500 hover:bg-orange-400 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('*')">×</button>
+                    
+                    <button class="btn-calc bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('4')">4</button>
+                    <button class="btn-calc bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('5')">5</button>
+                    <button class="btn-calc bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('6')">6</button>
+                    <button class="btn-calc bg-orange-500 hover:bg-orange-400 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('-')">−</button>
+                    
+                    <button class="btn-calc bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('1')">1</button>
+                    <button class="btn-calc bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('2')">2</button>
+                    <button class="btn-calc bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('3')">3</button>
+                    <button class="btn-calc bg-orange-500 hover:bg-orange-400 text-white font-bold text-xl sm:text-2xl rounded-xl py-3" onclick="inputKey('+')">+</button>
+                    
+                    <button class="btn-calc bg-gray-700 hover:bg-gray-600 text-white font-bold text-xl sm:text-2xl rounded-xl py-3 col-span-2" onclick="inputKey('0')">0</button>
+                    <button class="btn-calc bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-2xl rounded-xl py-3 col-span-2" onclick="someterExpresion()">=</button>
+                </div>
+            </div>
+
+            <!-- Mitad 2: Panel de Resultados -->
+            <div class="seccion-mitad bg-gray-900 border border-gray-700 rounded-2xl p-2 sm:p-3 flex-grow flex flex-col min-h-0">
+                <div class="flex justify-between items-center mb-1 sm:mb-2 px-1">
+                    <div class="flex flex-col">
+                        <h2 class="text-gray-400 text-xs sm:text-sm uppercase tracking-wider font-semibold">Registro de éxitos</h2>
+                        <span class="text-emerald-400 text-[10px] sm:text-xs">Fórmulas totales: <span id="combinaciones-texto" class="font-bold">0</span></span>
+                    </div>
+                    <span class="text-indigo-400 font-bold text-sm bg-indigo-900/30 px-2 py-0.5 rounded" id="progreso-texto">0/20</span>
+                </div>
+                
+                <div id="registro-resultados" class="grid grid-cols-2 gap-x-2 sm:gap-x-4 gap-y-2 overflow-y-auto pr-1 pb-1 content-start flex-grow">
+                    <!-- Se inyecta por JS para los números objetivo -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Éxito -->
+    <div id="success-modal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-3xl p-8 max-w-sm w-full text-center border-2 border-indigo-500 shadow-[0_0_40px_rgba(99,102,241,0.4)] transform scale-95 transition-transform duration-300 ease-out" id="modal-content">
+            <div class="text-6xl mb-4" id="modal-icon">🎉</div>
+            <h2 class="text-3xl font-bold text-white mb-2" id="modal-title">¡Nivel Completado!</h2>
+            <p class="text-gray-300 mb-6 text-lg" id="modal-desc">Has encontrado todas las combinaciones.</p>
+            <button onclick="siguienteNivel()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-xl text-xl shadow-lg transition-colors">
+                Siguiente Nivel
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Niveles predefinidos
+        const nivelesPredefinidos = [
+            { id: 1, permitidos: ['1', '5'] },
+            { id: 2, permitidos: ['2', '3'] },
+            { id: 3, permitidos: ['3', '4'] },
+            { id: 4, permitidos: ['4', '5'] },
+            { id: 5, permitidos: ['2', '5'] }
+        ];
+
+        let nivelActual = 0;
+        let expresion = "";
+        let teclasPermitidas = [];
+        let resultados = {};
+        let encontrados = 0;
+        let combinacionesTotales = 0;
+        let layoutSeleccionado = 'tablet'; // 'tablet' o 'pc'
+        let modoJuego = 'todos'; // 'todos' o 'random'
+        let numerosObjetivo = [];
+        let nombreJugador = "";
+
+        // Referencias de pantallas
+        const pBienvenida = document.getElementById('pantalla-bienvenida');
+        const pNiveles = document.getElementById('pantalla-niveles');
+        const pJuego = document.getElementById('pantalla-juego');
+        const innerLayout = document.getElementById('juego-layout-interno');
+        
+        const btnTablet = document.getElementById('btn-layout-tablet');
+        const btnPc = document.getElementById('btn-layout-pc');
+        
+        const btnModoTodos = document.getElementById('btn-modo-todos');
+        const btnModoRandom = document.getElementById('btn-modo-random');
+
+        // Referencias de UI Calculadora
+        const expresionDisplay = document.getElementById('expresion-display');
+        const resultadoDisplay = document.getElementById('resultado-display');
+        const nivelTexto = document.getElementById('nivel-texto');
+        const progresoTexto = document.getElementById('progreso-texto');
+        const combinacionesTexto = document.getElementById('combinaciones-texto');
+        const botones = document.querySelectorAll('#teclado button');
+        
+        // Referencias Modales
+        const modal = document.getElementById('success-modal');
+        const modalContent = document.getElementById('modal-content');
+
+        // --- SISTEMA DE NAVEGACIÓN Y CONFIGURACIÓN ---
+
+        function seleccionarLayout(tipo) {
+            layoutSeleccionado = tipo;
+            if(tipo === 'tablet') {
+                btnTablet.classList.add('border-indigo-400', 'bg-indigo-600', 'shadow-lg');
+                btnTablet.classList.remove('border-transparent', 'bg-gray-700', 'text-gray-300');
+                btnTablet.querySelector('span:last-child').classList.replace('text-gray-300', 'text-white');
+                
+                btnPc.classList.remove('border-indigo-400', 'bg-indigo-600', 'shadow-lg');
+                btnPc.classList.add('border-transparent', 'bg-gray-700', 'text-gray-300');
+                btnPc.querySelector('span:last-child').classList.replace('text-white', 'text-gray-300');
+            } else {
+                btnPc.classList.add('border-indigo-400', 'bg-indigo-600', 'shadow-lg');
+                btnPc.classList.remove('border-transparent', 'bg-gray-700', 'text-gray-300');
+                btnPc.querySelector('span:last-child').classList.replace('text-gray-300', 'text-white');
+                
+                btnTablet.classList.remove('border-indigo-400', 'bg-indigo-600', 'shadow-lg');
+                btnTablet.classList.add('border-transparent', 'bg-gray-700', 'text-gray-300');
+                btnTablet.querySelector('span:last-child').classList.replace('text-white', 'text-gray-300');
+            }
+        }
+
+        function seleccionarModo(tipo) {
+            modoJuego = tipo;
+            if(tipo === 'todos') {
+                btnModoTodos.classList.add('border-emerald-400', 'bg-emerald-600', 'shadow-lg');
+                btnModoTodos.classList.remove('border-transparent', 'bg-gray-700', 'text-gray-300');
+                btnModoTodos.querySelector('span:last-child').classList.replace('text-gray-300', 'text-white');
+                
+                btnModoRandom.classList.remove('border-emerald-400', 'bg-emerald-600', 'shadow-lg');
+                btnModoRandom.classList.add('border-transparent', 'bg-gray-700', 'text-gray-300');
+                btnModoRandom.querySelector('span:last-child').classList.replace('text-white', 'text-gray-300');
+            } else {
+                btnModoRandom.classList.add('border-emerald-400', 'bg-emerald-600', 'shadow-lg');
+                btnModoRandom.classList.remove('border-transparent', 'bg-gray-700', 'text-gray-300');
+                btnModoRandom.querySelector('span:last-child').classList.replace('text-gray-300', 'text-white');
+                
+                btnModoTodos.classList.remove('border-emerald-400', 'bg-emerald-600', 'shadow-lg');
+                btnModoTodos.classList.add('border-transparent', 'bg-gray-700', 'text-gray-300');
+                btnModoTodos.querySelector('span:last-child').classList.replace('text-white', 'text-gray-300');
+            }
+        }
+
+        function irANiveles() {
+            const inputNombre = document.getElementById('jugador-nombre').value.trim();
+            nombreJugador = inputNombre || "Jugador";
+            document.getElementById('nombre-display').textContent = nombreJugador;
+            
+            pBienvenida.classList.add('hidden');
+            pJuego.classList.add('hidden');
+            pNiveles.classList.remove('hidden');
+            
+            generarBotonesNiveles();
+        }
+
+        function irABienvenida() {
+            pNiveles.classList.add('hidden');
+            pJuego.classList.add('hidden');
+            pBienvenida.classList.remove('hidden');
+        }
+
+        function volverANivelesDesdeJuego() {
+            pJuego.classList.add('hidden');
+            pNiveles.classList.remove('hidden');
+        }
+
+        function abandonarJuego() {
+            pJuego.classList.add('hidden');
+            pBienvenida.classList.remove('hidden');
+        }
+
+        function generarBotonesNiveles() {
+            const grid = document.getElementById('grid-niveles');
+            grid.innerHTML = '';
+            
+            nivelesPredefinidos.forEach((nivel, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'bg-gray-700 hover:bg-gray-600 text-white rounded-xl p-4 flex justify-between items-center transition-colors border border-gray-600 active:scale-[0.98]';
+                btn.onclick = () => iniciarNivel(index);
+                
+                btn.innerHTML = `
+                    <div class="flex items-center gap-4 text-left">
+                        <span class="bg-indigo-900 text-indigo-300 font-bold w-10 h-10 rounded-full flex items-center justify-center shrink-0">${nivel.id}</span>
+                        <div>
+                            <div class="font-semibold text-lg">Nivel ${nivel.id}</div>
+                            <div class="text-sm text-gray-400 font-mono tracking-wider">Teclas: ${nivel.permitidos.join(', ')}</div>
+                        </div>
+                    </div>
+                    <span class="text-gray-500 text-2xl">▶</span>
+                `;
+                grid.appendChild(btn);
+            });
+        }
+
+        // --- LÓGICA DEL JUEGO ---
+
+        function iniciarNivel(indice) {
+            nivelActual = indice;
+            
+            pNiveles.classList.add('hidden');
+            pJuego.classList.remove('hidden');
+            
+            // Configurar el layout escogido
+            if(layoutSeleccionado === 'pc') {
+                pJuego.classList.remove('layout-tablet');
+                pJuego.classList.add('layout-pc');
+                innerLayout.classList.remove('flex-col');
+                innerLayout.classList.add('flex-row');
+            } else {
+                pJuego.classList.remove('layout-pc');
+                pJuego.classList.add('layout-tablet');
+                innerLayout.classList.remove('flex-row');
+                innerLayout.classList.add('flex-col');
+            }
+
+            cargarNivel(nivelActual);
+        }
+
+        function inicializarRegistro() {
+            resultados = {};
+            encontrados = 0;
+            const contenedor = document.getElementById('registro-resultados');
+            contenedor.innerHTML = '';
+            
+            for (let i = 1; i <= 20; i++) {
+                resultados[i] = null;
+                const div = document.createElement('div');
+                div.id = `res-${i}`;
+                div.className = 'flex justify-between items-center bg-gray-800 rounded-md py-1 px-2 border border-gray-700 transition-all duration-300 h-7 sm:h-8';
+                
+                const numSpan = document.createElement('span');
+                numSpan.className = 'font-bold text-gray-500 w-5 text-right mr-1 shrink-0 text-xs sm:text-sm';
+                numSpan.textContent = i;
+                
+                const exprSpan = document.createElement('span');
+                exprSpan.className = 'text-gray-600 font-mono tracking-wider truncate flex-grow text-right text-[10px] sm:text-xs';
+                exprSpan.textContent = '---';
+                exprSpan.id = `expr-${i}`;
+                
+                div.appendChild(numSpan);
+                div.appendChild(exprSpan);
+                contenedor.appendChild(div);
+            }
+            actualizarProgresoUI();
+        }
+
+        function actualizarProgresoUI() {
+            progresoTexto.textContent = `${encontrados}/20`;
+        }
+
+        function cargarNivel(indice) {
+            expresion = "";
+            actualizarPantalla();
+            
+            teclasPermitidas = nivelesPredefinidos[indice].permitidos;
+            nivelTexto.textContent = `Nivel ${indice + 1}: ${teclasPermitidas.join(' y ')}`;
+            
+            aplicarTeclasRotas();
+            
+            // Determinar los números que se deben buscar en este nivel
+            numerosObjetivo = [];
+            if (modoJuego === 'todos') {
+                for (let i = 1; i <= 20; i++) numerosObjetivo.push(i);
+            } else {
+                // Seleccionar 10 números aleatorios únicos del 1 al 20
+                const disponibles = Array.from({length: 20}, (_, i) => i + 1);
+                while (numerosObjetivo.length < 10) {
+                    const idx = Math.floor(Math.random() * disponibles.length);
+                    numerosObjetivo.push(disponibles[idx]);
+                    disponibles.splice(idx, 1);
+                }
+                numerosObjetivo.sort((a, b) => a - b);
+            }
+            
+            inicializarRegistro();
+        }
+
+        function inicializarRegistro() {
+            resultados = {};
+            encontrados = 0;
+            combinacionesTotales = 0;
+            const contenedor = document.getElementById('registro-resultados');
+            contenedor.innerHTML = '';
+            
+            numerosObjetivo.forEach(i => {
+                resultados[i] = []; // Ahora es un array para soportar múltiples formas de llegar al número
+                
+                const div = document.createElement('div');
+                div.id = `res-${i}`;
+                div.className = 'flex items-center bg-gray-800 rounded-md py-1 px-2 border border-gray-700 transition-all duration-300 h-9 sm:h-10 overflow-hidden';
+                
+                const numSpan = document.createElement('span');
+                numSpan.className = 'font-bold text-gray-500 w-5 text-center mr-2 shrink-0 text-xs sm:text-sm border-r border-gray-600 pr-2';
+                numSpan.textContent = i;
+                
+                // Contenedor scrolleable horizontalmente para las fórmulas
+                const formulasContenedor = document.createElement('div');
+                formulasContenedor.className = 'flex flex-nowrap gap-1.5 overflow-x-auto hide-scrollbar flex-grow items-center h-full';
+                formulasContenedor.id = `expr-container-${i}`;
+                
+                const emptySpan = document.createElement('span');
+                emptySpan.className = 'text-gray-600 font-mono text-[10px] sm:text-xs italic';
+                emptySpan.textContent = '---';
+                formulasContenedor.appendChild(emptySpan);
+                
+                div.appendChild(numSpan);
+                div.appendChild(formulasContenedor);
+                contenedor.appendChild(div);
+            });
+            
+            actualizarProgresoUI();
+        }
+
+        function actualizarProgresoUI() {
+            progresoTexto.textContent = `${encontrados}/${numerosObjetivo.length}`;
+            combinacionesTexto.textContent = combinacionesTotales;
+        }
+
+        function aplicarTeclasRotas() {
+            const todosLosNumeros = ['0','1','2','3','4','5','6','7','8','9'];
+            botones.forEach(btn => {
+                btn.classList.remove('btn-broken');
+                btn.disabled = false;
+                
+                let valorBtn = btn.textContent.trim();
+                if (valorBtn === '×') valorBtn = '*';
+                if (valorBtn === '÷') valorBtn = '/';
+                if (valorBtn === '−') valorBtn = '-';
+                if (valorBtn === '⌫') valorBtn = 'DEL';
+                
+                if (todosLosNumeros.includes(valorBtn) && !teclasPermitidas.includes(valorBtn)) {
+                    btn.classList.add('btn-broken');
+                    btn.disabled = true;
+                }
+            });
+        }
+
+        function inputKey(key) {
+            if (key === 'C') {
+                expresion = "";
+            } else if (key === 'DEL') {
+                expresion = expresion.slice(0, -1);
+            } else {
+                expresion += key;
+            }
+            actualizarPantalla();
+            evaluarExpresionAutomatica(); 
+        }
+
+        function actualizarPantalla() {
+            let expVisual = expresion.replace(/\*/g, '×').replace(/\//g, '÷').replace(/\-/g, '−');
+            expresionDisplay.textContent = expVisual;
+            
+            if (expresion === "") {
+                resultadoDisplay.textContent = "0";
+                resultadoDisplay.classList.remove('text-red-400');
+            }
+        }
+
+        function evaluarSegura(expr) {
+            try {
+                const sanitizada = expr.replace(/[^-()\d/*+.]/g, '');
+                if (sanitizada === "") return null;
+                const resultado = new Function('"use strict";return (' + sanitizada + ')')();
+                
+                if (isNaN(resultado) || !isFinite(resultado)) return null;
+                return Math.round(resultado * 10000) / 10000;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function evaluarExpresionAutomatica() {
+            const res = evaluarSegura(expresion);
+            if (res !== null) {
+                resultadoDisplay.textContent = res;
+            } else {
+                if (expresion !== "") resultadoDisplay.textContent = "...";
+            }
+        }
+
+        function someterExpresion() {
+            const res = evaluarSegura(expresion);
+            
+            // Validar que el resultado entero esté dentro de los objetivos de la partida actual
+            if (res !== null && Number.isInteger(res) && numerosObjetivo.includes(res)) {
+                
+                const expVisual = expresion.replace(/\*/g, '×').replace(/\//g, '÷').replace(/\-/g, '−');
+                const MAX_COMBINACIONES = 4; // Limita a 4 el número de formas diferentes para no colapsar la UI
+                
+                // Si la fórmula es nueva para este número y no hemos alcanzado el límite
+                if (!resultados[res].includes(expVisual) && resultados[res].length < MAX_COMBINACIONES) {
+                    
+                    const esElPrimero = resultados[res].length === 0;
+                    resultados[res].push(expVisual);
+                    combinacionesTotales++;
+                    
+                    if (esElPrimero) encontrados++;
+                    
+                    const div = document.getElementById(`res-${res}`);
+                    const container = document.getElementById(`expr-container-${res}`);
+                    
+                    // Solo si es la primera vez que encontramos este número, cambiamos el estilo del contenedor a "resuelto"
+                    if (esElPrimero) {
+                        div.classList.remove('bg-gray-800', 'border-gray-700');
+                        div.classList.add('bg-emerald-900/40', 'border-emerald-500/50', 'shadow-[inset_0_0_10px_rgba(16,185,129,0.2)]');
+                        
+                        div.firstElementChild.classList.remove('text-gray-500', 'border-gray-600');
+                        div.firstElementChild.classList.add('text-emerald-400', 'border-emerald-600/50');
+                        
+                        container.innerHTML = ''; // Quitar el '---' inicial
+                    }
+                    
+                    // Añadir la nueva fórmula como un "chip" en el scroll horizontal
+                    const chip = document.createElement('span');
+                    chip.className = 'bg-gray-900 border border-emerald-500/30 text-emerald-200 px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-mono whitespace-nowrap flex-shrink-0';
+                    chip.textContent = expVisual;
+                    container.appendChild(chip);
+                    
+                    // Auto-scroll para que el alumno vea la fórmula que acaba de añadir
+                    container.scrollLeft = container.scrollWidth;
+                    
+                    actualizarProgresoUI();
+                    
+                    // Destello verde de éxito
+                    resultadoDisplay.classList.add('text-emerald-400');
+                    setTimeout(() => {
+                        resultadoDisplay.classList.remove('text-emerald-400');
+                        expresion = "";
+                        actualizarPantalla();
+                        
+                        // Chequear victoria (Todos los números encontrados)
+                        if (encontrados === numerosObjetivo.length) mostrarVictoria();
+                    }, 400);
+
+                } else if (resultados[res].includes(expVisual)) {
+                    // Feedback visual si repite la misma fórmula
+                    const div = document.getElementById(`res-${res}`);
+                    div.classList.add('ring-2', 'ring-orange-500');
+                    setTimeout(() => div.classList.remove('ring-2', 'ring-orange-500'), 400);
+                } else if (resultados[res].length >= MAX_COMBINACIONES) {
+                    // Feedback visual si alcanzó el máximo de combinaciones para ese número
+                    const div = document.getElementById(`res-${res}`);
+                    div.classList.add('ring-2', 'ring-blue-500');
+                    setTimeout(() => div.classList.remove('ring-2', 'ring-blue-500'), 400);
+                }
+            } else {
+                // Número fuera de objetivos, mal calculado o decimal
+                if (expresion !== "") {
+                    resultadoDisplay.classList.add('text-red-400');
+                    setTimeout(() => resultadoDisplay.classList.remove('text-red-400'), 400);
+                }
+            }
+        }
+
+        function mostrarVictoria() {
+            document.getElementById('modal-icon').textContent = "🎉";
+            document.getElementById('modal-title').textContent = "¡Nivel Completado!";
+            document.getElementById('modal-desc').textContent = "¡Enhorabuena " + nombreJugador + ", has encontrado todas las combinaciones!";
+            document.querySelector('#modal-content button').textContent = "Continuar";
+            document.querySelector('#modal-content button').onclick = siguienteNivel;
+            
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modalContent.classList.remove('scale-95');
+                modalContent.classList.add('scale-100');
+            }, 50);
+        }
+
+        function mostrarFinJuego() {
+            document.getElementById('modal-icon').textContent = "🏆";
+            document.getElementById('modal-title').textContent = "¡Juego Superado!";
+            document.getElementById('modal-desc').textContent = "¡Fantástico " + nombreJugador + "! Has superado todos los niveles disponibles.";
+            
+            const btn = document.querySelector('#modal-content button');
+            btn.textContent = "Volver a jugar";
+            btn.onclick = () => {
+                cerrarModal();
+                irABienvenida(); // Volver a empezar
+            };
+            
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modalContent.classList.remove('scale-95');
+                modalContent.classList.add('scale-100');
+            }, 50);
+        }
+
+        function cerrarModal() {
+            modalContent.classList.remove('scale-100');
+            modalContent.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 200);
+        }
+
+        function siguienteNivel() {
+            cerrarModal();
+            setTimeout(() => {
+                nivelActual++;
+                if(nivelActual >= nivelesPredefinidos.length) {
+                    mostrarFinJuego();
+                } else {
+                    iniciarNivel(nivelActual);
+                }
+            }, 200);
+        }
+
+    </script>
+</body>
+</html>
